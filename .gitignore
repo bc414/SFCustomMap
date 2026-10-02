@@ -1,0 +1,3 @@
+site/data/
+tests/fixture_gtfs/
+__pycache__/

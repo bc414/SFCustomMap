@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Muni Reach Map</title>
+  <meta name="description" content="Where Muni can take you from your nearby stops, with walking radius shaded.">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map" aria-label="Map"></div>
+
+  <aside id="panel" class="panel">
+    <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
+      <span class="grip" aria-hidden="true"></span>
+      <span id="summary">Loading Muni data…</span>
+    </button>
+
+    <div id="panel-body" class="panel-body">
+      <section>
+        <h2>When</h2>
+        <div class="row">
+          <label for="day">Day</label>
+          <select id="day"></select>
+        </div>
+        <div class="row">
+          <label for="from">From</label>
+          <select id="from"></select>
+          <label for="to">to</label>
+          <select id="to"></select>
+        </div>
+      </section>
+
+      <section>
+        <h2>Walking</h2>
+        <div class="row">
+          <label for="walk">At destination</label>
+          <input id="walk" type="range" min="100" max="1500" step="50">
+          <output id="walk-out" for="walk"></output>
+        </div>
+        <div class="row">
+          <label for="home-radius">Home to stop</label>
+          <input id="home-radius" type="range" min="100" max="1500" step="50">
+          <output id="home-radius-out" for="home-radius"></output>
+        </div>
+      </section>
+
+      <section>
+        <h2>Starting stops <button id="reset-stops" class="link" type="button">Reset</button></h2>
+        <p class="hint">Click any stop marker near home to add or remove it.</p>
+        <ul id="start-list" class="start-list"></ul>
+      </section>
+
+      <section>
+        <h2>Routes
+          <span class="actions">
+            <button id="routes-all" class="link" type="button">All</button>
+            <button id="routes-none" class="link" type="button">None</button>
+          </span>
+        </h2>
+        <ul id="route-list" class="route-list"></ul>
+        <div class="row">
+          <label for="color-mode">Colors</label>
+          <select id="color-mode">
+            <option value="palette">Distinct per route</option>
+            <option value="muni">Muni official</option>
+          </select>
+        </div>
+      </section>
+
+      <footer id="data-info" class="hint"></footer>
+    </div>
+  </aside>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

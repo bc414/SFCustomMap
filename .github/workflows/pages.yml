@@ -1,0 +1,51 @@
+name: Build and deploy map
+
+on:
+  push:
+    branches: [main, claude/sf-transit-viz-approaches-i99ywh]
+  # Daily rebuild keeps the 7-day schedule window current (runs on the default branch only).
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test the data builder
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Download Muni GTFS and build site/data/muni.json
+        env:
+          # Optional overrides: a repository variable GTFS_URL, or a secret
+          # API_511_KEY (free from https://511.org/open-data/token).
+          GTFS_URL: ${{ vars.GTFS_URL }}
+          API_511_KEY: ${{ secrets.API_511_KEY }}
+        run: |
+          python3 scripts/build_data.py
+          rm -f site/data/gtfs.zip
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
