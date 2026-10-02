@@ -30,7 +30,7 @@ To change the defaults (home location, radii, time window, colors), edit `site/c
 
 ### Data source
 
-By default the script downloads `https://gtfs.sfmta.com/transitdata/google_transit.zip`. If that stops working:
+By default the script tries `https://gtfs.sfmta.com/transitdata/google_transit.zip`. If that fails, it looks up Muni's feed in the [Mobility Database](https://mobilitydatabase.org) public catalog and downloads it from there. If both stop working:
 
 - set a repository **variable** `GTFS_URL` to a different feed URL, or
 - add a repository **secret** `API_511_KEY` with a free key from <https://511.org/open-data/token>. The script then also tries 511's official Muni feed.

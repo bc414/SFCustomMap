@@ -25,9 +25,14 @@ import zipfile
 from collections import defaultdict
 
 # Tried in order. GTFS_URL (env) wins; a 511.org key (env API_511_KEY) adds the
-# official regional endpoint for Muni (operator SF).
+# official regional endpoint for Muni (operator SF). If all of these fail, the
+# Mobility Database catalog is searched for Muni's feed (no key needed).
 DEFAULT_URLS = [
     "https://gtfs.sfmta.com/transitdata/google_transit.zip",
+]
+MOBILITY_DB_CATALOGS = [
+    "https://storage.googleapis.com/storage/v1/b/mdb-csv/o/sources.csv?alt=media",
+    "https://bit.ly/catalogs-csv",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,15 +69,58 @@ class Feed:
                 yield {k.strip(): (v or "").strip() for k, v in row.items() if k}
 
 
+def fetch(url, timeout=60):
+    req = urllib.request.Request(url, headers={"User-Agent": "SFCustomMap/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def catalog_urls():
+    """Muni feed URLs listed in the Mobility Database catalog (sources.csv)."""
+    for catalog in MOBILITY_DB_CATALOGS:
+        try:
+            print(f"Searching the Mobility Database catalog {catalog} ...", file=sys.stderr)
+            text = fetch(catalog).decode("utf-8-sig")
+        except Exception as e:  # noqa: BLE001 - try the next catalog
+            print(f"  failed: {e}", file=sys.stderr)
+            continue
+        found = []
+        for row in csv.DictReader(io.StringIO(text)):
+            provider = (row.get("provider") or "").lower()
+            if row.get("data_type") != "gtfs" or not ("san francisco municipal" in provider or "sfmta" in provider):
+                continue
+            if (row.get("urls.authentication_type") or "0") not in ("", "0"):
+                continue
+            rank = 1 if (row.get("status") or "").lower() in ("deprecated", "inactive") else 0
+            for key in ("urls.latest", "urls.direct_download"):
+                if row.get(key):
+                    found.append((rank, row[key]))
+        urls = [u for _, u in sorted(found, key=lambda x: x[0])]
+        print(f"  found {len(urls)} candidate URL(s)", file=sys.stderr)
+        if urls:
+            return urls
+    return []
+
+
 def download(urls, dest):
-    last_err = None
-    for url in urls:
+    last_err, tried, from_catalog = None, set(), False
+    queue = list(urls)
+    while True:
+        if not queue and not from_catalog:
+            from_catalog = True
+            queue = catalog_urls()
+        if not queue:
+            break
+        url = queue.pop(0)
+        if url in tried:
+            continue
+        tried.add(url)
         try:
             print(f"Downloading {url.split('api_key=')[0]} ...", file=sys.stderr)
-            req = urllib.request.Request(url, headers={"User-Agent": "SFCustomMap/1.0"})
-            with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as out:
-                out.write(r.read())
-            if zipfile.is_zipfile(dest):
+            body = fetch(url)
+            if zipfile.is_zipfile(io.BytesIO(body)):
+                with open(dest, "wb") as out:
+                    out.write(body)
                 return dest
             last_err = "response was not a zip file"
         except Exception as e:  # noqa: BLE001 - try the next source
