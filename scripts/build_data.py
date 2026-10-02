@@ -28,6 +28,7 @@ from collections import defaultdict
 # official regional endpoint for Muni (operator SF). If all of these fail, the
 # Mobility Database catalog is searched for Muni's feed (no key needed).
 DEFAULT_URLS = [
+    "https://muni-gtfs.apps.sfmta.com/data/muni_gtfs-current.zip",
     "https://gtfs.sfmta.com/transitdata/google_transit.zip",
 ]
 MOBILITY_DB_CATALOGS = [
@@ -102,7 +103,8 @@ def catalog_urls():
     return []
 
 
-def download(urls, dest):
+def download(urls, dest_dir):
+    """Yield paths of downloaded GTFS zips, one per working source, in order."""
     last_err, tried, from_catalog = None, set(), False
     queue = list(urls)
     while True:
@@ -119,14 +121,16 @@ def download(urls, dest):
             print(f"Downloading {url.split('api_key=')[0]} ...", file=sys.stderr)
             body = fetch(url)
             if zipfile.is_zipfile(io.BytesIO(body)):
+                dest = os.path.join(dest_dir, f"gtfs-{len(tried)}.zip")
                 with open(dest, "wb") as out:
                     out.write(body)
-                return dest
+                yield dest
+                continue
             last_err = "response was not a zip file"
         except Exception as e:  # noqa: BLE001 - try the next source
             last_err = e
         print(f"  failed: {last_err}", file=sys.stderr)
-    raise SystemExit(f"Could not download a GTFS feed (last error: {last_err})")
+    print(f"No more GTFS sources (last error: {last_err})", file=sys.stderr)
 
 
 # ---------------------------------------------------------------- helpers
@@ -205,20 +209,51 @@ def active_services(feed, dates):
     return active
 
 
-def build(feed, start_date, agency_filter=None):
-    dates = [start_date + dt.timedelta(days=i) for i in range(7)]
+class NoService(Exception):
+    pass
+
+
+def service_range(feed):
+    """(first, last) date on which the feed schedules any service."""
+    dates = []
+    for row in feed.rows("calendar"):
+        dates += [dt.datetime.strptime(row["start_date"], "%Y%m%d").date(),
+                  dt.datetime.strptime(row["end_date"], "%Y%m%d").date()]
+    for row in feed.rows("calendar_dates"):
+        if row["exception_type"] == "1":
+            dates.append(dt.datetime.strptime(row["date"], "%Y%m%d").date())
+    return (min(dates), max(dates)) if dates else (None, None)
+
+
+def build(feed, start_date, agency_filter=None, allow_shift=False):
+    real_dates = [start_date + dt.timedelta(days=i) for i in range(7)]
+    dates, warning = real_dates, ""
     active = active_services(feed, dates)
+    if not any(active.values()):
+        lo, hi = service_range(feed)
+        msg = f"No service is scheduled between {dates[0]} and {dates[-1]}; the feed covers {lo} to {hi}."
+        if not allow_shift or lo is None or hi - lo < dt.timedelta(days=6):
+            raise NoService(msg)
+        # Use the nearest week the feed covers, keeping weekdays aligned.
+        if start_date > hi - dt.timedelta(days=6):
+            weeks = math.ceil((start_date - (hi - dt.timedelta(days=6))).days / 7)
+        else:
+            weeks = -math.ceil((lo - start_date).days / 7)
+        shifted = start_date - dt.timedelta(weeks=weeks)
+        dates = [shifted + dt.timedelta(days=i) for i in range(7)]
+        active = active_services(feed, dates)
+        warning = (f"The newest Muni schedule found covers {lo} to {hi}, so times shown are from the week of "
+                   f"{dates[0]}. Routes and stops are usually unchanged, but check times before relying on them.")
+        print("WARNING: " + msg + f" Using the week of {dates[0]} instead.", file=sys.stderr)
 
     # Collapse the 7 dates into distinct "day types" (weekdays usually share one).
     day_type_of_set, day_types, days = {}, [], []
-    for d in dates:
+    for real, d in zip(real_dates, dates):
         key = frozenset(active[d])
         if key not in day_type_of_set:
             day_type_of_set[key] = len(day_types)
             day_types.append(key)
-        days.append({"date": d.isoformat(), "dow": d.weekday(), "type": day_type_of_set[key]})
-    if not any(day_types):
-        raise SystemExit(f"No service is active between {dates[0]} and {dates[-1]}: is the feed current?")
+        days.append({"date": real.isoformat(), "dow": real.weekday(), "type": day_type_of_set[key]})
 
     routes = {}
     for r in feed.rows("routes"):
@@ -327,6 +362,7 @@ def build(feed, start_date, agency_filter=None):
     return {
         "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "feedVersion": feed_info.get("feed_version", ""),
+        "warning": warning,
         "days": days,
         "routes": out_routes,
         "stops": out_stops,
@@ -358,15 +394,30 @@ def main():
         start = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=8)).date()
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    path = args.gtfs
-    if not path:
+    agencies = set(args.agency) if args.agency else None
+    if args.gtfs:
+        sources = [args.gtfs]
+    else:
         urls = [os.environ["GTFS_URL"]] if os.environ.get("GTFS_URL") else []
         if os.environ.get("API_511_KEY"):
             urls.append("https://api.511.org/transit/datafeeds?operator_id=SF&api_key=" + os.environ["API_511_KEY"])
         urls += DEFAULT_URLS
-        path = download(urls, os.path.join(os.path.dirname(args.out), "gtfs.zip"))
+        sources = download(urls, os.path.dirname(args.out))
 
-    data = build(Feed(path), start, set(args.agency) if args.agency else None)
+    # Use the first feed that has service this week; otherwise fall back to the
+    # nearest week of the first feed that downloaded.
+    data, stale = None, None
+    for path in sources:
+        try:
+            data = build(Feed(path), start, agencies)
+            break
+        except NoService as e:
+            print(f"  {path}: {e}", file=sys.stderr)
+            stale = stale or path
+    if data is None:
+        if stale is None:
+            raise SystemExit("Could not download a GTFS feed.")
+        data = build(Feed(stale), start, agencies, allow_shift=True)
     with open(args.out, "w") as f:
         json.dump(data, f, separators=(",", ":"))
     print(f"Wrote {args.out}: {len(data['routes'])} routes, {len(data['stops'])} stops, "

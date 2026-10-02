@@ -470,6 +470,9 @@
       `Muni schedule data ${data.feedVersion ? "(" + data.feedVersion + ") " : ""}` +
       `built ${gen.toLocaleDateString()}, covering ${data.days[0].date} – ${data.days[data.days.length - 1].date}. ` +
       `Straight-line walking circles; no transfers.`;
+    if (data.warning) {
+      document.getElementById("panel-body").prepend(el("p", { class: "warning", role: "status" }, data.warning));
+    }
   }
 
   function updatePanel(result, colors) {

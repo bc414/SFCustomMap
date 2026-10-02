@@ -104,6 +104,15 @@ select { font: inherit; padding: 3px 4px; border: 1px solid var(--line); border-
   cursor: pointer;
 }
 
+.warning {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff4d6;
+  color: #5c4300;
+  font-size: 12px;
+}
+
 .hint { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
 
 /* ---------------------------------------------------------------- lists */

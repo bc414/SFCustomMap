@@ -34,7 +34,7 @@ jobs:
           API_511_KEY: ${{ secrets.API_511_KEY }}
         run: |
           python3 scripts/build_data.py
-          rm -f site/data/gtfs.zip
+          rm -f site/data/gtfs*.zip
 
       - uses: actions/upload-pages-artifact@v3
         with:

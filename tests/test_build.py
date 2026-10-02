@@ -43,6 +43,18 @@ class BuildDataTest(unittest.TestCase):
         p = next(p for p in self.data["patterns"] if p["r"] == self.route("90"))
         self.assertTrue(all(t >= 24 * 60 for t in p["t"]["0"]))
 
+    def test_stale_feed_falls_back_to_nearest_covered_week(self):
+        # The fixture's calendar ends 2027-12-31.
+        start = dt.date(2028, 3, 6)
+        feed = build_data.Feed(make_fixture.OUT)
+        with self.assertRaises(build_data.NoService):
+            build_data.build(feed, start)
+        data = build_data.build(feed, start, allow_shift=True)
+        self.assertTrue(data["warning"])
+        self.assertEqual(data["days"][0]["date"], "2028-03-06")
+        self.assertEqual([d["dow"] for d in data["days"]], [0, 1, 2, 3, 4, 5, 6])
+        self.assertEqual([d["type"] for d in data["days"]], [0, 0, 0, 0, 0, 1, 2])
+
     def test_polyline_encoding(self):
         # Reference value from Google's polyline documentation.
         pts = [(38.5, -120.2), (40.7, -120.95), (43.252, -126.453)]
