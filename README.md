@@ -30,7 +30,7 @@ To change the defaults (home location, radii, time window, colors), edit `site/c
 
 ### Data source
 
-By default the script tries `https://gtfs.sfmta.com/transitdata/google_transit.zip`. If that fails, it looks up Muni's feed in the [Mobility Database](https://mobilitydatabase.org) public catalog and downloads it from there. If both stop working:
+By default the script tries SFMTA's own feed URLs (`muni-gtfs.apps.sfmta.com`, then `gtfs.sfmta.com`). If a feed has no service scheduled this week, or none downloads, it looks up Muni's feed in the [Mobility Database](https://mobilitydatabase.org) public catalog and downloads it from there. If every feed it finds is out of date, the page uses the nearest week the newest feed covers and shows a warning. For this week's actual schedule, or if downloads stop working:
 
 - set a repository **variable** `GTFS_URL` to a different feed URL, or
 - add a repository **secret** `API_511_KEY` with a free key from <https://511.org/open-data/token>. The script then also tries 511's official Muni feed.
