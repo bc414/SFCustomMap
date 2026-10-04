@@ -14,7 +14,7 @@
   ];
   const CANDIDATE_RADIUS_M = 1500; // stops shown as clickable around home
 
-  let data, map, layers, panes;
+  let data, map, layers, panes, basemaps;
   const state = {};
 
   // ------------------------------------------------------------ utilities
@@ -89,6 +89,7 @@
       remove: new Set(), // stop_ids removed by clicking
       hidden: new Set(), // route_ids hidden in the legend
       color: CFG.colorMode,
+      base: CFG.basemap === "satellite" ? "satellite" : "map",
     };
   }
 
@@ -109,6 +110,7 @@
     if (p.has("rm")) state.remove = set("rm");
     if (p.has("hide")) state.hidden = set("hide");
     if (p.has("color")) state.color = p.get("color");
+    if (p.has("base")) state.base = p.get("base") === "satellite" ? "satellite" : "map";
   }
 
   function writeHash() {
@@ -125,6 +127,7 @@
     if (state.remove.size) p.set("rm", [...state.remove].join(","));
     if (state.hidden.size) p.set("hide", [...state.hidden].join(","));
     if (state.color !== d.color) p.set("color", state.color);
+    if (state.base !== d.base) p.set("base", state.base);
     const s = p.toString().replace(/%2C/g, ",");
     history.replaceState(null, "", s ? "#" + s : location.pathname + location.search);
   }
@@ -260,25 +263,53 @@
     map = L.map("map", { zoomControl: false, preferCanvas: true }).setView(state.home, 14);
     L.control.zoom({ position: "topright" }).addTo(map);
     L.control.scale({ position: "bottomright", metric: true, imperial: true }).addTo(map);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19,
-      subdomains: "abcd",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> · Transit data: SFMTA',
-    }).addTo(map);
 
     // The reach pane is drawn at partial opacity as a whole, so overlapping
     // circles merge into one evenly shaded area instead of stacking up.
     panes = {};
-    const mk = (name, z, opacity) => {
+    const mk = (name, z) => {
       const pane = map.createPane(name);
       pane.style.zIndex = z;
-      if (opacity != null) pane.style.opacity = opacity;
       panes[name] = L.canvas({ pane: name, padding: 0.5 });
     };
-    mk("reach", 350, CFG.reachOpacity);
+    mk("reach", 350);
     mk("routes", 420);
     mk("stops", 450);
     map.getPane("reach").style.pointerEvents = "none";
+    // Street names over the satellite photos: above the shading and route
+    // lines (like Google Maps), below the stop markers.
+    map.createPane("labels").style.zIndex = 430;
+    map.getPane("labels").style.pointerEvents = "none";
+
+    const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+    const carto = '&copy; <a href="https://carto.com/attributions">CARTO</a>';
+    const transit = "Transit data: SFMTA";
+    basemaps = {
+      map: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        maxZoom: 19,
+        subdomains: "abcd",
+        attribution: `${osm} ${carto} · ${transit}`,
+      }),
+      satellite: L.layerGroup([
+        L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+          maxZoom: 19,
+          maxNativeZoom: 19,
+          attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+        }),
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+          maxZoom: 19,
+          subdomains: "abcd",
+          pane: "labels",
+          attribution: `Labels ${osm} ${carto} · ${transit}`,
+        }),
+      ]),
+    };
+    basemaps[state.base].addTo(map);
+    L.control.layers({ Map: basemaps.map, Satellite: basemaps.satellite }, null, { position: "topright" }).addTo(map);
+    map.on("baselayerchange", (e) => {
+      state.base = e.layer === basemaps.satellite ? "satellite" : "map";
+      update();
+    });
 
     layers = {
       reach: L.layerGroup().addTo(map),
@@ -335,7 +366,10 @@
     for (const g of Object.values(layers)) g.clearLayers();
 
     // Shared reachable area.
-    const fill = CFG.reachColor;
+    // Satellite photos are dark and busy, so the shading is brighter and stronger there.
+    const sat = state.base === "satellite";
+    const fill = sat ? CFG.satelliteReachColor : CFG.reachColor;
+    map.getPane("reach").style.opacity = sat ? CFG.satelliteReachOpacity : CFG.reachOpacity;
     for (const si of reach.keys()) {
       const s = data.stops[si];
       L.circle([s.lat, s.lon], {
@@ -394,7 +428,7 @@
     }
 
     // Home and its walking radius.
-    L.circle(state.home, { radius: state.homeR, color: "#111", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(layers.home);
+    L.circle(state.home, { radius: state.homeR, color: sat ? "#fff" : "#111", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(layers.home);
     const home = L.marker(state.home, {
       draggable: true,
       title: CFG.home.label + " (drag to move)",

@@ -24,7 +24,13 @@ window.MAP_CONFIG = {
   // "muni": the colors published in the Muni GTFS feed, where present.
   colorMode: "palette",
 
-  // Shading for the shared reachable area.
+  // Background: "map" (street map) or "satellite" (Esri imagery with street
+  // names on top). Switch with the layers button in the top-right corner.
+  basemap: "map",
+
+  // Shading for the shared reachable area, on the street map and on satellite.
   reachColor: "#3b5ba5",
   reachOpacity: 0.22,
+  satelliteReachColor: "#7fdcff",
+  satelliteReachOpacity: 0.35,
 };

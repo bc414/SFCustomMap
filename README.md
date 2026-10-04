@@ -17,6 +17,7 @@ take you **without transferring**, starting from the stops near where you're sta
 | **Stop markers** | Click any stop near home to add or remove it as a starting stop. |
 | **Home marker** | Drag it to move "home". |
 | **Routes** | Turn routes on or off. Click a route name to zoom to it. |
+| **Layers button** (top right) | Switch between the street map and satellite imagery. Street names stay on top of the satellite view. |
 
 Every setting is saved in the page URL, so you can bookmark a link or share it to get the same view.
 
@@ -25,7 +26,7 @@ To change the defaults (home location, radii, time window, colors), edit `site/c
 ## How it works
 
 - `scripts/build_data.py` downloads Muni's GTFS feed (its published schedule data) and turns it into `site/data/muni.json`. That file holds the routes, stops, route shapes and the trip times for the next 7 days. It uses only the Python standard library.
-- `site/` is a plain static page built with Leaflet (vendored in `site/vendor/`) on a CARTO/OpenStreetMap basemap. All the calculation happens in the browser.
+- `site/` is a plain static page built with Leaflet (vendored in `site/vendor/`) on a CARTO/OpenStreetMap street map, or Esri World Imagery for the satellite view. All the calculation happens in the browser.
 - `.github/workflows/pages.yml` rebuilds the data and deploys the page to GitHub Pages on every push and once a day.
 
 ### Data source
